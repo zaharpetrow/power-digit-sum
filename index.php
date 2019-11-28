@@ -4,12 +4,15 @@ class PowerDigitSum
 {
 
     private $calculator;
+    private $graph;
 
     public function __construct()
     {
         require_once 'CalculationLargeNumbers.php';
+        require_once 'Graph.php';
 
         $this->calculator = new CalculationLargeNumbers();
+        $this->graph      = new Graph();
     }
 
     private function add_zeros_to_string(string &$str, int $countZeros)
@@ -53,7 +56,9 @@ class PowerDigitSum
         $result = $base;
 
         for ($i = 1; $i < $exp; $i++) {
+            $start  = $this->graph->get_microtime();
             $result = $this->multiply($result, $base);
+            $this->graph->end_of_metering($start);
         }
         return $result;
     }
@@ -71,6 +76,7 @@ class PowerDigitSum
     public function init(int $base, int $exp)
     {
         $result = $this->digit_sum($this->pow($base, $exp));
+        echo $this->graph->init();
 
         return $result;
     }
