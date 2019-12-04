@@ -14,6 +14,7 @@ class Graph
     public $measurements = [];
     private $image;
     private $marginLeft  = 8;
+    private $marginRight = 0;
     private $textWidth   = 0;
     private $signs_x     = [];
     private $colors;
@@ -26,6 +27,12 @@ class Graph
     private $count;
     private $x0;
     private $y0;
+    private $calc;
+
+    public function __construct(CalculationLargeNumbers $calc)
+    {
+        $this->calc = $calc;
+    }
 
     public function get_microtime(): float
     {
@@ -36,12 +43,11 @@ class Graph
 
     public function end_of_metering(float $start)
     {
-        $finish = $this->get_microtime();
-        if ($start === $finish) {
-            $this->measurements[] = 0;
-        } else {
-            $this->measurements[] = $this->get_microtime() - $start;
-        }
+        $finish = (string) $this->get_microtime();
+        $start  = (string) $start;
+        $result = (float) $this->calc->diff_array([$finish, $start]);
+
+        $this->measurements[] = $result;
     }
 
     private function set_count()
@@ -54,9 +60,9 @@ class Graph
         $this->image = imagecreate(self::IMG_WIDTH, self::IMG_HEIGHT);
     }
 
-    private function get_html_image($image, int $width = 1300)
+    private function get_html_image($image, string $width = '90%')
     {
-        return "<br><img src='data:image/jpeg;base64," . base64_encode($image) . "' width='" . $width . "px'><br>";
+        return "<br><img src='data:image/jpeg;base64," . base64_encode($image) . "' width='" . $width . "'><br>";
     }
 
     private function averaging_values()
@@ -97,28 +103,35 @@ class Graph
         $this->maxValue = $this->maxValue + ($this->maxValue / 10);
     }
 
-    private function set_text_width()
+    private function add_text_width_to_margin_left()
     {
-        for ($i = 1; $i < self::COUNT_Y; $i++) {
+        for ($i = 1; $i <= self::COUNT_Y; $i++) {
             $strlen = mb_strlen(($this->maxValue / self::COUNT_Y) * $i) * self::FONT_WIDTH;
             if ($strlen > $this->textWidth) {
                 $this->textWidth = $strlen;
             }
         }
+
+        $this->marginLeft += $this->textWidth;
     }
 
     private function set_signs_x()
     {
+        $this->set_count_x();
         $this->signs_x = [];
-        $step          = $this->count / $this->count_x;
+        $step          = $this->count / ($this->count_x - 1);
 
-        for ($i = 0; $i <= $this->count_x; $i++) {
-            if ($i === $this->count_x) {
-                $this->signs_x[] = $this->count - 1;
-                continue;
-            }
+        for ($i = 0; $i < $this->count_x; $i++) {
             $this->signs_x[] = round($i * $step);
         }
+
+        $this->set_margin_right();
+    }
+
+    private function set_margin_right()
+    {
+        $last_sign_x       = $this->signs_x[count($this->signs_x) - 1];
+        $this->marginRight = mb_strlen($last_sign_x) * self::FONT_WIDTH / 2;
     }
 
     private function set_count_x()
@@ -141,27 +154,24 @@ class Graph
 
     private function draw_grid_x()
     {
-        for ($i = 1; $i <= $this->count_x; $i++) {
+        for ($i = 0; $i < $this->count_x; $i++) {
             $x = $this->x0 + $i * $this->step_x;
-            imageline($this->image, $x, $this->y0, $x, $this->y0, $this->colors['gridColor']);
             imageline($this->image, $x, $this->y0, $x, $this->y0 - $this->realHeight, $this->colors['gridColor']);
         }
     }
 
     private function draw_graph_lines()
     {
-        $dx = ($this->realWidth / $this->count) / 2;
-
-        $pi = $this->y0 - ($this->realHeight / $this->maxValue * $this->measurements[0]);
-        $px = intval($this->x0 + $dx);
+        $y1 = $this->y0 - ($this->realHeight / $this->maxValue * $this->measurements[0]);
+        $x1 = $this->x0;
 
         for ($i = 1; $i < $this->count; $i++) {
-            $x = intval($this->x0 + $i * ($this->realWidth / $this->count) + $dx);
-            $y = $this->y0 - ($this->realHeight / $this->maxValue * $this->measurements[$i]);
+            $x2 = intval($this->x0 + $i * ($this->realWidth / ($this->count - 1)));
+            $y2 = $this->y0 - ($this->realHeight / $this->maxValue * $this->measurements[$i]);
 
-            imageline($this->image, $px, $pi, $x, $y, $this->colors['barColor']);
-            $pi = $y;
-            $px = $x;
+            imageline($this->image, $x1, $y1, $x2, $y2, $this->colors['barColor']);
+            $y1 = $y2;
+            $x1 = $x2;
         }
     }
 
@@ -185,28 +195,29 @@ class Graph
         }
     }
 
+    private function set_real_sizes()
+    {
+        $this->realWidth  = self::IMG_WIDTH - $this->marginLeft - self::MARGIN - $this->marginRight;
+        $this->realHeight = self::IMG_HEIGHT - self::MARGIN_BOTTOM - self::MARGIN;
+    }
+
     public function init()
     {
         $this->set_count();
         $this->set_max_value();
-        $this->set_count_x();
         $this->set_signs_x();
         $this->averaging_values();
 
         $this->create_image();
         $this->set_colors($this->image);
-        $this->set_text_width();
-
-        $this->marginLeft += $this->textWidth;
-
-        $this->realWidth  = self::IMG_WIDTH - $this->marginLeft - self::MARGIN;
-        $this->realHeight = self::IMG_HEIGHT - self::MARGIN_BOTTOM - self::MARGIN;
+        $this->add_text_width_to_margin_left();
+        $this->set_real_sizes();
 
         $this->x0 = $this->marginLeft;
         $this->y0 = self::IMG_HEIGHT - self::MARGIN_BOTTOM;
 
         $this->step_y = $this->realHeight / self::COUNT_Y;
-        $this->step_x = $this->realWidth / $this->count_x;
+        $this->step_x = $this->realWidth / ($this->count_x - 1);
 
         $arr1 = [
             'x1'    => $this->x0,

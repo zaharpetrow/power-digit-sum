@@ -12,7 +12,7 @@ class PowerDigitSum
         require_once 'Graph.php';
 
         $this->calculator = new CalculationLargeNumbers();
-        $this->graph      = new Graph();
+        $this->graph      = new Graph($this->calculator);
     }
 
     private function add_zeros_to_string(string &$str, int $countZeros)
